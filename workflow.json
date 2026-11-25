@@ -1,0 +1,336 @@
+{
+  "name": "CMS Synchronization (Кокшаров)",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://77.67.89.207:8080/auth/token",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"{{ $('Initialize').first().json.username }}\",\n  \"password\": \"{{ $('Initialize').first().json.password }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        976,
+        0
+      ],
+      "id": "a901c3ee-ed6f-4f76-854f-ff6b3cc7b5f3",
+      "name": "Get Token"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://77.67.89.207:8080/report/csv",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Get Token').first().json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "text/csv"
+            },
+            {
+              "name": "Accept",
+              "value": "*/*"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/csv",
+        "body": "={{ $json.csv }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1616,
+        0
+      ],
+      "id": "d4864f7f-4846-4ebb-bbdb-7091f9fdad8c",
+      "name": "Upload CSV"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fe5d90c2-eb50-4d5d-90d4-6203471555be",
+              "name": "syncStartedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "eb3106a0-2cb4-4843-9b30-36eebc53c3a8",
+              "name": "username",
+              "value": "student17",
+              "type": "string"
+            },
+            {
+              "id": "ab53f366-3f66-4c94-acf1-b64ba89fd335",
+              "name": "password",
+              "value": "C-0MT&K~pSa",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        192,
+        0
+      ],
+      "id": "98c7987b-c72f-44f9-abb1-1ecf9a078310",
+      "name": "Initialize"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\n\nconst csv = rows.map(item => {\n  const r = item.json;\n\n  return [\n    r.spare_code,\n    r.spare_name,\n    r.spare_description,\n    r.spare_type,\n    r.spare_status,\n    r.price,\n    r.quantity,\n    r.updated_at\n  ].join(';');\n}).join('\\n');\n\nreturn [{\n  json: {\n    csv,\n    rows: rows.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        0
+      ],
+      "id": "093aed7b-f20e-411d-bdd3-54e22ee7d7d0",
+      "name": "Generate CSV"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "328f5114-2cbc-4b0f-a8ac-8afaea8318ab",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://77.67.89.207:8080/cms/spares",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "page",
+              "value": "0"
+            },
+            {
+              "name": "size",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount }}"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        384,
+        0
+      ],
+      "id": "49dba72d-23aa-4f18-a79b-da70ac417535",
+      "name": "Fetch CMS Spare Parts",
+      "executeOnce": false,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "zk243EvkaPOgQt4l",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO spare_parts (\n    spare_code,\n    spare_name,\n    spare_description,\n    spare_type,\n    spare_status,\n    price,\n    quantity,\n    updated_at,\n    last_seen,\n    is_active\n)\nVALUES (\n    $1, $2, $3, $4, $5, $6, $7, $8,\n    CURRENT_TIMESTAMP,\n    TRUE\n)\nON CONFLICT (spare_code)\nDO UPDATE SET\n    spare_name = EXCLUDED.spare_name,\n    spare_description = EXCLUDED.spare_description,\n    spare_type = EXCLUDED.spare_type,\n    spare_status = EXCLUDED.spare_status,\n    price = EXCLUDED.price,\n    quantity = EXCLUDED.quantity,\n    updated_at = EXCLUDED.updated_at,\n    last_seen = CURRENT_TIMESTAMP,\n    is_active = TRUE;",
+        "options": {
+          "queryReplacement": "={{ [   $json.spareCode,   $json.spareName,   $json.spareDescription,   $json.spareType,   $json.spareStatus,   $json.price,   $json.quantity,   $json.updatedAt ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        592,
+        0
+      ],
+      "id": "5c221890-0923-4dd8-8c24-2e09181fbcc4",
+      "name": "Upsert Spare Parts",
+      "credentials": {
+        "postgres": {
+          "id": "3GMNFAz3TVV4k0T9",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE spare_parts\nSET is_active = FALSE\nWHERE is_active = TRUE\n  AND last_seen < (\n    '{{ $(\"Initialize\").first().json.syncStartedAt }}'::timestamptz\n    AT TIME ZONE 'UTC'\n  );",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        784,
+        0
+      ],
+      "id": "265c8b66-4980-43fb-8213-e035d597108e",
+      "name": "Mark Inactive Spare Parts",
+      "credentials": {
+        "postgres": {
+          "id": "3GMNFAz3TVV4k0T9",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    spare_code,\n    spare_name,\n    spare_description,\n    spare_type,\n    spare_status,\n    price,\n    quantity,\n    updated_at\nFROM spare_parts\nWHERE is_active = TRUE\nORDER BY CAST(SUBSTRING(spare_code FROM '[0-9]+$') AS INTEGER);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "b5d18197-02c7-4b94-878a-20f56bc519c8",
+      "name": "Select All Spare Parts",
+      "credentials": {
+        "postgres": {
+          "id": "3GMNFAz3TVV4k0T9",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Token": {
+      "main": [
+        [
+          {
+            "node": "Select All Spare Parts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize": {
+      "main": [
+        [
+          {
+            "node": "Fetch CMS Spare Parts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate CSV": {
+      "main": [
+        [
+          {
+            "node": "Upload CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch CMS Spare Parts": {
+      "main": [
+        [
+          {
+            "node": "Upsert Spare Parts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Spare Parts": {
+      "main": [
+        [
+          {
+            "node": "Mark Inactive Spare Parts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Inactive Spare Parts": {
+      "main": [
+        [
+          {
+            "node": "Get Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select All Spare Parts": {
+      "main": [
+        [
+          {
+            "node": "Generate CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e8a72830-7449-4090-8b5f-c521230ee624",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8c5cc1ac2388d09e5e0a7d88830c817c5ae818f2b3c379bef204c105367a1540"
+  },
+  "nodeGroups": [],
+  "id": "reT9TA0og3GLhl3e",
+  "tags": []
+}
